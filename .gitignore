@@ -6,6 +6,8 @@
 build/
 DerivedData/
 .DerivedData/
+.claude/
+CLAUDE.md
 
 ## Various settings
 *.pbxuser
