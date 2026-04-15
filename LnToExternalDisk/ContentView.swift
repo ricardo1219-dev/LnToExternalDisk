@@ -10,9 +10,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var viewModel = BatchListViewModel()
     @State private var showRuleEditor = false
     @State private var isBatchDropTargeted = false
+
+    private var theme: Theme {
+        Theme(colorScheme: colorScheme)
+    }
 
     var body: some View {
         ZStack {
@@ -27,7 +32,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: LayoutMetrics.windowMinWidth, minHeight: LayoutMetrics.windowMinHeight)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(theme.windowBackground)
         .contentShape(Rectangle())
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isBatchDropTargeted) { providers in
             handleDrop(providers)
@@ -35,7 +40,7 @@ struct ContentView: View {
         .overlay {
             if viewModel.isRunning {
                 ZStack {
-                    Color.black.opacity(0.18)
+                    theme.overlayScrim
                         .ignoresSafeArea()
                     VStack(spacing: 14) {
                         ProgressView()
@@ -53,9 +58,9 @@ struct ContentView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                            .strokeBorder(theme.overlayBorder, lineWidth: 1)
                     }
-                    .shadow(color: .black.opacity(0.12), radius: 24, y: 8)
+                    .shadow(color: theme.overlayShadowColor, radius: 24, y: 8)
                 }
             }
         }
@@ -106,8 +111,8 @@ struct ContentView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.accentColor.opacity(isBatchDropTargeted ? 0.18 : 0.12),
-                            Color.accentColor.opacity(isBatchDropTargeted ? 0.08 : 0.04)
+                            theme.dropZoneFill(isTargeted: isBatchDropTargeted).top,
+                            theme.dropZoneFill(isTargeted: isBatchDropTargeted).bottom
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -115,17 +120,17 @@ struct ContentView: View {
                 )
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(
-                    Color.accentColor.opacity(isBatchDropTargeted ? 0.7 : 0.35),
+                    theme.dropZoneBorder(isTargeted: isBatchDropTargeted),
                     style: StrokeStyle(lineWidth: isBatchDropTargeted ? 2 : 1.5, dash: [9, 6])
                 )
             HStack(spacing: 10) {
                 Image(systemName: "arrow.down.doc")
                     .font(.system(size: 18, weight: .medium))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(isBatchDropTargeted ? Color.accentColor : .secondary)
+                    .foregroundStyle(isBatchDropTargeted ? theme.accentStrong : .secondary)
                 Text(isBatchDropTargeted ? "松手即可追加目录到批量任务" : "拖拽目录到这里可批量追加，也可使用上方“导入文件夹”")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isBatchDropTargeted ? Color.accentColor : .secondary)
+                    .foregroundStyle(isBatchDropTargeted ? theme.accentStrong : .secondary)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -237,13 +242,19 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(theme.secondaryCardBackground)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.42), lineWidth: 1)
+                .strokeBorder(theme.secondaryCardBorder, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.012), radius: 4, y: 1)
+        .shadow(color: theme.secondaryCardShadowColor, radius: 7, y: 2)
+        .overlay {
+            if viewModel.selectedIDs.contains(liveItem.id) {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(theme.selectionOutline, lineWidth: 1.2)
+            }
+        }
     }
 
     private var ruleEditorSheet: some View {
@@ -288,12 +299,13 @@ struct ContentView: View {
                             .padding(12)
                             .background {
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color(nsColor: .controlBackgroundColor))
+                                    .fill(theme.secondaryCardBackground)
                             }
                             .overlay {
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 1)
+                                    .strokeBorder(theme.secondaryCardBorder, lineWidth: 1)
                             }
+                            .shadow(color: theme.secondaryCardShadowColor.opacity(0.85), radius: 5, y: 1)
                         }
                     }
                 }
@@ -326,11 +338,12 @@ struct ContentView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(theme.warningBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+                            .strokeBorder(theme.warningBorder, lineWidth: 1)
                     }
+                    .shadow(color: theme.warningShadowColor, radius: 8, y: 2)
                 }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
@@ -346,11 +359,20 @@ struct ContentView: View {
                 .padding(12)
                 .background {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.92))
+                        .fill(theme.logBackground)
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+                        .strokeBorder(theme.logBorder, lineWidth: 1)
+                }
+                .shadow(color: theme.logShadowColor, radius: 8, y: 2)
+                .overlay(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(theme.logHighlight)
+                        .frame(height: 1)
+                        .padding(.horizontal, 1)
+                        .blendMode(.screen)
+                        .opacity(colorScheme == .dark ? 1 : 0)
                 }
             }
         }
@@ -410,8 +432,8 @@ struct ContentView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(nsColor: .controlBackgroundColor),
-                            Color(nsColor: .controlBackgroundColor).opacity(0.96)
+                            theme.panelGradient.top,
+                            theme.panelGradient.bottom
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -420,18 +442,27 @@ struct ContentView: View {
         }
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.32), lineWidth: 1)
+                .strokeBorder(theme.panelBorder, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.03), radius: 12, y: 6)
+        .shadow(color: theme.panelShadowColor, radius: 12, y: 6)
+        .overlay(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(theme.panelHighlight)
+                .frame(height: 1)
+                .padding(.horizontal, 1)
+                .blendMode(.screen)
+                .opacity(colorScheme == .dark ? 1 : 0)
+        }
     }
 
     private func statusBadge(_ status: BatchItemStatus) -> some View {
         let color = statusColor(status)
+        let background = theme.badgeBackground(for: color)
         return Text(status.title)
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(color.opacity(0.16), in: Capsule())
+            .background(background, in: Capsule())
             .foregroundStyle(color)
     }
 
@@ -680,12 +711,147 @@ struct ContentView: View {
     }
 
     private func statusChip(title: String, color: Color) -> some View {
-        Text(title)
+        let background = theme.chipBackground(for: color)
+        return Text(title)
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(color.opacity(0.12), in: Capsule())
+            .background(background, in: Capsule())
             .foregroundStyle(color)
+    }
+
+    private struct Theme {
+        let colorScheme: ColorScheme
+
+        var windowBackground: Color {
+            colorScheme == .dark
+                ? Color(red: 0.10, green: 0.10, blue: 0.11)
+                : Color(nsColor: .windowBackgroundColor)
+        }
+
+        var accentStrong: Color {
+            colorScheme == .dark ? Color.accentColor.opacity(0.92) : Color.accentColor
+        }
+
+        var panelGradient: (top: Color, bottom: Color) {
+            if colorScheme == .dark {
+                return (
+                    Color(red: 0.16, green: 0.16, blue: 0.17),
+                    Color(red: 0.13, green: 0.13, blue: 0.14)
+                )
+            }
+            return (
+                Color(nsColor: .controlBackgroundColor),
+                Color(nsColor: .controlBackgroundColor).opacity(0.96)
+            )
+        }
+
+        var panelBorder: Color {
+            colorScheme == .dark
+                ? Color.white.opacity(0.10)
+                : Color(nsColor: .separatorColor).opacity(0.32)
+        }
+
+        var panelShadowColor: Color {
+            colorScheme == .dark ? Color.black.opacity(0.36) : Color.black.opacity(0.03)
+        }
+
+        var panelHighlight: Color {
+            colorScheme == .dark ? Color.white.opacity(0.015) : Color.clear
+        }
+
+        var secondaryCardBackground: Color {
+            colorScheme == .dark
+                ? Color(red: 0.18, green: 0.18, blue: 0.19)
+                : Color(nsColor: .controlBackgroundColor)
+        }
+
+        var secondaryCardBorder: Color {
+            colorScheme == .dark
+                ? Color.white.opacity(0.08)
+                : Color(nsColor: .separatorColor).opacity(0.42)
+        }
+
+        var secondaryCardShadowColor: Color {
+            colorScheme == .dark ? Color.black.opacity(0.22) : Color.black.opacity(0.012)
+        }
+
+        var overlayScrim: Color {
+            colorScheme == .dark ? Color.black.opacity(0.34) : Color.black.opacity(0.18)
+        }
+
+        var overlayBorder: Color {
+            colorScheme == .dark ? Color.white.opacity(0.12) : Color.primary.opacity(0.08)
+        }
+
+        var overlayShadowColor: Color {
+            colorScheme == .dark ? Color.black.opacity(0.42) : Color.black.opacity(0.12)
+        }
+
+        func dropZoneFill(isTargeted: Bool) -> (top: Color, bottom: Color) {
+            if colorScheme == .dark {
+                return isTargeted
+                    ? (Color.accentColor.opacity(0.32), Color.accentColor.opacity(0.16))
+                    : (Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.08))
+            }
+            return isTargeted
+                ? (Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.08))
+                : (Color.accentColor.opacity(0.12), Color.accentColor.opacity(0.04))
+        }
+
+        func dropZoneBorder(isTargeted: Bool) -> Color {
+            if colorScheme == .dark {
+                return Color.accentColor.opacity(isTargeted ? 0.9 : 0.55)
+            }
+            return Color.accentColor.opacity(isTargeted ? 0.7 : 0.35)
+        }
+
+        var selectionOutline: Color {
+            colorScheme == .dark ? Color.accentColor.opacity(0.6) : Color.accentColor.opacity(0.28)
+        }
+
+        var warningBackground: Color {
+            colorScheme == .dark ? Color.orange.opacity(0.18) : Color.orange.opacity(0.12)
+        }
+
+        var warningBorder: Color {
+            colorScheme == .dark ? Color.orange.opacity(0.45) : Color.orange.opacity(0.35)
+        }
+
+        var warningShadowColor: Color {
+            colorScheme == .dark ? Color.orange.opacity(0.12) : Color.clear
+        }
+
+        var logBackground: Color {
+            colorScheme == .dark
+                ? Color(red: 0.13, green: 0.13, blue: 0.14)
+                : Color(nsColor: .textBackgroundColor).opacity(0.92)
+        }
+
+        var logBorder: Color {
+            colorScheme == .dark ? Color.white.opacity(0.07) : Color(nsColor: .separatorColor).opacity(0.45)
+        }
+
+        var logShadowColor: Color {
+            colorScheme == .dark ? Color.black.opacity(0.24) : Color.clear
+        }
+
+        var logHighlight: Color {
+            colorScheme == .dark ? Color.white.opacity(0.015) : Color.clear
+        }
+
+        func badgeBackground(for color: Color) -> Color {
+            colorScheme == .dark ? color.opacity(0.24) : color.opacity(0.16)
+        }
+
+        func chipBackground(for color: Color) -> Color {
+            colorScheme == .dark ? color.opacity(0.2) : color.opacity(0.12)
+        }
+
+        private func tinted(_ base: NSColor, white: Double, black: Double) -> Color {
+            let adjusted = base.blended(withFraction: CGFloat(white), of: .white)?.blended(withFraction: CGFloat(black), of: .black) ?? base
+            return Color(nsColor: adjusted)
+        }
     }
 
     private func itemIndex(for id: UUID) -> Int? {
