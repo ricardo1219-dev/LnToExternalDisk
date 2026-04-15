@@ -14,17 +14,20 @@ struct LnToExternalDiskApp: App {
         WindowGroup {
             ContentView()
         }
+        .defaultSize(width: 980, height: 720)
         Settings {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("软链接助手")
-                    .font(.title2.weight(.semibold))
-                Text("在主界面配置映射规则与目标卷路径后，拖拽目录即可批量处理。")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("软链接助手")
+                        .font(.title2.weight(.semibold))
+                    Text("在主界面配置映射规则与目标卷路径后，拖拽目录即可批量处理。")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(24)
+                .frame(minWidth: 300, idealWidth: 420, maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
-            .frame(width: 440, alignment: .leading)
             .background(Color(nsColor: .windowBackgroundColor))
         }
     }

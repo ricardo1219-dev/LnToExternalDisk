@@ -12,17 +12,26 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var viewModel = BatchListViewModel()
     @State private var showRuleEditor = false
+    @State private var isBatchDropTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            headerSection
-            dropSection
-            listSection
-            logSection
+        ZStack {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 20) {
+                    headerSection
+                    listSection
+                    logSection
+                }
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .padding(22)
-        .frame(minWidth: 1080, minHeight: 720)
+        .frame(minWidth: LayoutMetrics.windowMinWidth, minHeight: LayoutMetrics.windowMinHeight)
         .background(Color(nsColor: .windowBackgroundColor))
+        .contentShape(Rectangle())
+        .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isBatchDropTargeted) { providers in
+            handleDrop(providers)
+        }
         .overlay {
             if viewModel.isRunning {
                 ZStack {
@@ -57,264 +66,223 @@ struct ContentView: View {
 
     private var headerSection: some View {
         panelCard(title: "卷与路径", subtitle: "指定外置卷根目录，再导入或拖拽待处理文件夹") {
-            HStack(alignment: .center, spacing: 14) {
-                Text("卷路径")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 56, alignment: .leading)
-                TextField("/Volumes/YourDisk", text: $viewModel.volumeRoot)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.body.monospaced())
-                    .onSubmit { viewModel.saveRules() }
-                Button {
-                    viewModel.chooseVolumeRoot()
-                } label: {
-                    Label("选择卷", systemImage: "externaldrive")
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .center, spacing: 14) {
+                    volumePathLabel
+                    volumePathField
                 }
-                .help("选择外置磁盘卷")
-                Button {
-                    showRuleEditor = true
-                } label: {
-                    Label("路径映射规则", systemImage: "arrow.triangle.swap")
+                ViewThatFits(in: .horizontal) {
+                    headerActionWideLayout
+                    headerActionCompactLayout
                 }
-                Button {
-                    viewModel.pickFolders()
-                } label: {
-                    Label("导入文件夹", systemImage: "folder.badge.plus")
-                }
-                Toggle(isOn: $viewModel.stopOnFailure) {
-                    Label("失败即停", systemImage: "exclamationmark.octagon")
-                }
-                .toggleStyle(.checkbox)
-                Spacer(minLength: 12)
-                Button {
-                    viewModel.runBatch()
-                } label: {
-                    Label(viewModel.isRunning ? "执行中…" : "开始批量执行", systemImage: "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(viewModel.items.isEmpty || viewModel.isRunning)
-            }
-        }
-    }
-
-    private var dropSection: some View {
-        panelCard(title: "添加任务", subtitle: "将 Finder 中的目录拖入下方区域") {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.06))
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.accentColor.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [9, 6]))
-                VStack(spacing: 10) {
-                    Image(systemName: "arrow.down.doc")
-                        .font(.system(size: 32, weight: .medium))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                    Text("拖拽目录到这里可批量追加")
-                        .font(.body.weight(.semibold))
-                    Text("也可使用上方「导入文件夹」")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 8)
-            }
-            .frame(height: 100)
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .onDrop(of: [UTType.fileURL.identifier], isTargeted: nil) { providers in
-                handleDrop(providers)
             }
         }
     }
 
     private var listSection: some View {
         panelCard(title: "批量任务", subtitle: "编辑路径、冲突策略后可逐条或整批执行") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 16) {
-                    Toggle("sudo", isOn: Binding(
-                        get: { viewModel.sudoEnabled },
-                        set: { viewModel.setSudoEnabled($0) }
-                    ))
-                    .toggleStyle(.switch)
-                    .frame(width: 110)
-                    Spacer()
-                    Button {
-                        viewModel.removeSelectedItems()
-                    } label: {
-                        Label("移除选中", systemImage: "minus.circle")
-                    }
-                    Button(role: .destructive) {
-                        viewModel.clearItems()
-                    } label: {
-                        Label("清空列表", systemImage: "trash")
-                    }
+            VStack(alignment: .leading, spacing: 14) {
+                ViewThatFits(in: .horizontal) {
+                    listToolbarWideLayout
+                    listToolbarCompactLayout
                 }
-                batchColumnHeader
-                ScrollView(.vertical) {
+                batchDropArea
+                if viewModel.items.isEmpty {
+                    emptyBatchState
+                } else {
                     LazyVStack(spacing: 10) {
                         ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, item in
-                            batchRow(index: index, item: item)
+                            batchCard(index: index, item: item)
                         }
                     }
                 }
-                .frame(minHeight: 300, maxHeight: 360)
             }
         }
     }
 
-    private var batchColumnHeader: some View {
-        HStack(spacing: 8) {
-            Color.clear.frame(width: 28)
-            Text("原始路径")
-                .frame(minWidth: 260, alignment: .leading)
-            Text("目标路径")
-                .frame(minWidth: 300, alignment: .leading)
-            Text("冲突策略")
-                .frame(width: 160, alignment: .leading)
-            Text("目标")
-                .frame(width: 100, alignment: .leading)
-            Text("权限")
-                .frame(width: 70, alignment: .leading)
-            Text("状态")
-                .frame(width: 88, alignment: .leading)
-            Text("信息")
-                .frame(minWidth: 80, alignment: .leading)
-            Spacer()
-                .frame(width: 72)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color(nsColor: .separatorColor).opacity(0.22), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private func batchRow(index: Int, item: BatchLinkItem) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                viewModel.toggleSelection(id: item.id)
-            } label: {
-                Image(systemName: viewModel.selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+    private var batchDropArea: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(isBatchDropTargeted ? 0.18 : 0.12),
+                            Color.accentColor.opacity(isBatchDropTargeted ? 0.08 : 0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    Color.accentColor.opacity(isBatchDropTargeted ? 0.7 : 0.35),
+                    style: StrokeStyle(lineWidth: isBatchDropTargeted ? 2 : 1.5, dash: [9, 6])
+                )
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.down.doc")
+                    .font(.system(size: 18, weight: .medium))
                     .symbolRenderingMode(.hierarchical)
-                    .imageScale(.large)
+                    .foregroundStyle(isBatchDropTargeted ? Color.accentColor : .secondary)
+                Text(isBatchDropTargeted ? "松手即可追加目录到批量任务" : "拖拽目录到这里可批量追加，也可使用上方“导入文件夹”")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isBatchDropTargeted ? Color.accentColor : .secondary)
+                    .multilineTextAlignment(.center)
             }
-            .buttonStyle(.plain)
-            .frame(width: 28)
-
-            TextField("原始路径", text: Binding(
-                get: { viewModel.items[index].sourcePath },
-                set: {
-                    viewModel.items[index].sourcePath = $0
-                    viewModel.refreshTargetState(for: index)
-                }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .font(.caption.monospaced())
-            .frame(minWidth: 260)
-
-            TextField("目标路径", text: Binding(
-                get: { viewModel.items[index].targetPath },
-                set: {
-                    viewModel.items[index].targetPath = $0
-                    viewModel.refreshTargetState(for: index)
-                }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .font(.caption.monospaced())
-            .frame(minWidth: 300)
-
-            Picker("", selection: Binding(
-                get: { viewModel.items[index].conflictPolicy },
-                set: { viewModel.items[index].conflictPolicy = $0 }
-            )) {
-                ForEach(ConflictPolicy.allCases) { policy in
-                    Text(policy.title).tag(policy)
-                }
-            }
-            .labelsHidden()
-            .frame(width: 160)
-            .disabled(!item.targetExists)
-
-            Text(item.targetExists ? "目标已存在" : "目标不存在")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(item.targetExists ? .orange : .secondary)
-                .frame(width: 100, alignment: .leading)
-
-            Text(item.requiresPrivileged ? "需提权" : "普通")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(item.requiresPrivileged ? .red : .secondary)
-                .frame(width: 70, alignment: .leading)
-
-            statusBadge(item.status)
-                .frame(width: 88, alignment: .leading)
-
-            Text(item.message)
-                .lineLimit(1)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 80, alignment: .leading)
-
-            Spacer(minLength: 0)
-            Button {
-                viewModel.runSingle(id: item.id)
-            } label: {
-                Label("执行", systemImage: "play.circle")
-            }
-            .labelStyle(.titleOnly)
-            .disabled(viewModel.isRunning)
-            .frame(width: 72)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func batchCard(index: Int, item: BatchLinkItem) -> some View {
+        let liveItem = itemSnapshot(for: item.id) ?? item
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("任务 \(index + 1)")
+                        .font(.subheadline.weight(.semibold))
+                    statusBadge(liveItem.status)
+                }
+                Spacer(minLength: 12)
+                HStack(spacing: 10) {
+                    Button {
+                        viewModel.toggleSelection(id: liveItem.id)
+                    } label: {
+                        Image(systemName: viewModel.selectedIDs.contains(liveItem.id) ? "checkmark.circle.fill" : "circle")
+                            .imageScale(.large)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(viewModel.selectedIDs.contains(liveItem.id) ? Color.accentColor : .secondary)
+
+                    Button {
+                        viewModel.runSingle(id: liveItem.id)
+                    } label: {
+                        Label("执行", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(viewModel.isRunning)
+                }
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 10) {
+                    compactFieldGroup(title: "源路径") {
+                        TextField("原始路径", text: itemTextBinding(for: liveItem.id, keyPath: \.sourcePath))
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospaced())
+                    }
+                    compactFieldGroup(title: "目标路径") {
+                        TextField("目标路径", text: itemTextBinding(for: liveItem.id, keyPath: \.targetPath))
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospaced())
+                    }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    compactFieldGroup(title: "源路径") {
+                        TextField("原始路径", text: itemTextBinding(for: liveItem.id, keyPath: \.sourcePath))
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospaced())
+                    }
+                    compactFieldGroup(title: "目标路径") {
+                        TextField("目标路径", text: itemTextBinding(for: liveItem.id, keyPath: \.targetPath))
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospaced())
+                    }
+                }
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 8) {
+                    conflictPolicyPicker(for: liveItem.id, fallback: liveItem.conflictPolicy, isEnabled: liveItem.targetExists)
+                    statusChip(
+                        title: liveItem.targetExists ? "目标已存在" : "目标不存在",
+                        color: liveItem.targetExists ? .orange : .secondary
+                    )
+                    statusChip(
+                        title: liveItem.requiresPrivileged ? "需提权" : "普通权限",
+                        color: liveItem.requiresPrivileged ? .red : .secondary
+                    )
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    conflictPolicyPicker(for: liveItem.id, fallback: liveItem.conflictPolicy, isEnabled: liveItem.targetExists)
+                    HStack(spacing: 8) {
+                        statusChip(
+                            title: liveItem.targetExists ? "目标已存在" : "目标不存在",
+                            color: liveItem.targetExists ? .orange : .secondary
+                        )
+                        statusChip(
+                            title: liveItem.requiresPrivileged ? "需提权" : "普通权限",
+                            color: liveItem.requiresPrivileged ? .red : .secondary
+                        )
+                    }
+                }
+            }
+
+            if !liveItem.message.isEmpty {
+                Text(liveItem.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.42), lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.012), radius: 4, y: 1)
     }
 
     private var ruleEditorSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("路径映射规则")
-                        .font(.title2.weight(.semibold))
-                    Text("将源路径前缀替换为目标前缀，保存后主界面生效")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    viewModel.appendRule()
-                } label: {
-                    Label("新增规则", systemImage: "plus.circle.fill")
-                }
-                Button {
-                    viewModel.saveRules()
-                    showRuleEditor = false
-                } label: {
-                    Label("保存并关闭", systemImage: "checkmark.circle.fill")
-                }
-                .buttonStyle(.borderedProminent)
+            ViewThatFits(in: .horizontal) {
+                ruleEditorHeaderWideLayout
+                ruleEditorHeaderCompactLayout
             }
             ScrollView(.vertical) {
                 LazyVStack(spacing: 10) {
                     ForEach(viewModel.rules) { rule in
                         if let ruleBinding = ruleBinding(for: rule.id) {
-                            HStack(spacing: 12) {
-                                TextField("源前缀", text: ruleBinding.sourcePrefix)
-                                    .textFieldStyle(.roundedBorder)
-                                Image(systemName: "arrow.right")
-                                    .foregroundStyle(.tertiary)
-                                TextField("替换前缀", text: ruleBinding.replacementPrefix)
-                                    .textFieldStyle(.roundedBorder)
-                                Button(role: .destructive) {
-                                    viewModel.removeRule(id: rule.id)
-                                } label: {
-                                    Label("删除", systemImage: "trash")
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 12) {
+                                    TextField("源前缀", text: ruleBinding.sourcePrefix)
+                                        .textFieldStyle(.roundedBorder)
+                                    Image(systemName: "arrow.right")
+                                        .foregroundStyle(.tertiary)
+                                    TextField("替换前缀", text: ruleBinding.replacementPrefix)
+                                        .textFieldStyle(.roundedBorder)
+                                    Button(role: .destructive) {
+                                        viewModel.removeRule(id: rule.id)
+                                    } label: {
+                                        Label("删除", systemImage: "trash")
+                                    }
+                                }
+                                VStack(alignment: .leading, spacing: 12) {
+                                    TextField("源前缀", text: ruleBinding.sourcePrefix)
+                                        .textFieldStyle(.roundedBorder)
+                                    TextField("替换前缀", text: ruleBinding.replacementPrefix)
+                                        .textFieldStyle(.roundedBorder)
+                                    HStack {
+                                        Spacer(minLength: 0)
+                                        Button(role: .destructive) {
+                                            viewModel.removeRule(id: rule.id)
+                                        } label: {
+                                            Label("删除", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                             .padding(12)
@@ -330,10 +298,10 @@ struct ContentView: View {
                     }
                 }
             }
-            .frame(minHeight: 260)
+            .frame(minHeight: 220, idealHeight: 280)
         }
         .padding(22)
-        .frame(minWidth: 760, minHeight: 420)
+        .frame(minWidth: LayoutMetrics.ruleEditorMinWidth, minHeight: LayoutMetrics.ruleEditorMinHeight)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -374,11 +342,11 @@ struct ContentView: View {
                         }
                     }
                 }
-                .frame(minHeight: 120)
+                .frame(minHeight: 120, idealHeight: 180)
                 .padding(12)
                 .background {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(nsColor: .textBackgroundColor))
+                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.92))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -389,17 +357,37 @@ struct ContentView: View {
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        var accepted = false
         for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            accepted = true
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, _ in
-                guard let data = data as? Data,
-                      let url = NSURL(absoluteURLWithDataRepresentation: data, relativeTo: nil) as URL?
-                else { return }
+                let resolvedURL: URL?
+
+                switch data {
+                case let url as URL:
+                    resolvedURL = url
+                case let nsURL as NSURL:
+                    resolvedURL = nsURL as URL
+                case let data as Data:
+                    resolvedURL = NSURL(absoluteURLWithDataRepresentation: data, relativeTo: nil) as URL?
+                case let string as String:
+                    resolvedURL = URL(string: string)
+                case let nsString as NSString:
+                    resolvedURL = URL(string: nsString as String)
+                default:
+                    resolvedURL = nil
+                }
+
+                guard let url = resolvedURL else { return }
+                let standardizedURL = url.standardizedFileURL
+                guard standardizedURL.hasDirectoryPath else { return }
+
                 Task { @MainActor in
-                    viewModel.addDroppedFolders(urls: [url])
+                    viewModel.addDroppedFolders(urls: [standardizedURL])
                 }
             }
         }
-        return true
+        return accepted
     }
 
     private func panelCard<Content: View>(title: LocalizedStringKey, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
@@ -415,16 +403,26 @@ struct ContentView: View {
             }
             content()
         }
-        .padding(18)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(nsColor: .controlBackgroundColor),
+                            Color(nsColor: .controlBackgroundColor).opacity(0.96)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.32), lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.03), radius: 12, y: 6)
     }
 
     private func statusBadge(_ status: BatchItemStatus) -> some View {
@@ -444,5 +442,276 @@ struct ContentView: View {
         case .success: return .green
         case .failed: return .red
         }
+    }
+
+    private var volumePathLabel: some View {
+        Text("卷路径")
+            .font(.body.weight(.medium))
+            .foregroundStyle(.secondary)
+            .frame(width: 56, alignment: .leading)
+    }
+
+    private var volumePathField: some View {
+        TextField("/Volumes/YourDisk", text: $viewModel.volumeRoot)
+            .textFieldStyle(.roundedBorder)
+            .font(.body.monospaced())
+            .onSubmit { viewModel.saveRules() }
+    }
+
+    private var chooseVolumeButton: some View {
+        Button {
+            viewModel.chooseVolumeRoot()
+        } label: {
+            Label("选择卷", systemImage: "externaldrive")
+        }
+        .help("选择外置磁盘卷")
+    }
+
+    private var ruleEditorButton: some View {
+        Button {
+            showRuleEditor = true
+        } label: {
+            Label("路径映射规则", systemImage: "arrow.triangle.swap")
+        }
+    }
+
+    private var importFoldersButton: some View {
+        Button {
+            viewModel.pickFolders()
+        } label: {
+            Label("导入文件夹", systemImage: "folder.badge.plus")
+        }
+    }
+
+    private var stopOnFailureToggle: some View {
+        Toggle(isOn: $viewModel.stopOnFailure) {
+            Label("失败即停", systemImage: "exclamationmark.octagon")
+        }
+        .toggleStyle(.checkbox)
+    }
+
+    private var runBatchButton: some View {
+        Button {
+            viewModel.runBatch()
+        } label: {
+            Label(viewModel.isRunning ? "执行中…" : "开始批量执行", systemImage: "play.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(viewModel.items.isEmpty || viewModel.isRunning)
+    }
+
+    private var headerActionWideLayout: some View {
+        HStack(alignment: .center, spacing: 12) {
+            chooseVolumeButton
+            ruleEditorButton
+            importFoldersButton
+            stopOnFailureToggle
+            Spacer(minLength: 12)
+            runBatchButton
+        }
+    }
+
+    private var headerActionCompactLayout: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                chooseVolumeButton
+                ruleEditorButton
+                importFoldersButton
+            }
+            HStack(alignment: .center, spacing: 14) {
+                stopOnFailureToggle
+                Spacer(minLength: 12)
+                runBatchButton
+            }
+        }
+    }
+
+    private var sudoToggle: some View {
+        Toggle("sudo", isOn: Binding(
+            get: { viewModel.sudoEnabled },
+            set: { viewModel.setSudoEnabled($0) }
+        ))
+        .toggleStyle(.switch)
+        .frame(width: 110)
+    }
+
+    private var removeSelectedButton: some View {
+        Button {
+            viewModel.removeSelectedItems()
+        } label: {
+            Label("移除选中", systemImage: "minus.circle")
+        }
+    }
+
+    private var clearItemsButton: some View {
+        Button(role: .destructive) {
+            viewModel.clearItems()
+        } label: {
+            Label("清空列表", systemImage: "trash")
+        }
+    }
+
+    private var listToolbarWideLayout: some View {
+        HStack(spacing: 16) {
+            sudoToggle
+            Spacer(minLength: 12)
+            removeSelectedButton
+            clearItemsButton
+        }
+    }
+
+    private var listToolbarCompactLayout: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sudoToggle
+            HStack(spacing: 12) {
+                removeSelectedButton
+                clearItemsButton
+            }
+        }
+    }
+
+    private var emptyBatchState: some View {
+        VStack(alignment: .center, spacing: 10) {
+            Image(systemName: "square.stack.3d.up")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("还没有批量任务")
+                .font(.headline)
+            Text("拖拽目录到上方区域，或使用“导入文件夹”来创建任务卡片。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var ruleEditorTitleBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("路径映射规则")
+                .font(.title2.weight(.semibold))
+            Text("将源路径前缀替换为目标前缀，保存后主界面生效")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var addRuleButton: some View {
+        Button {
+            viewModel.appendRule()
+        } label: {
+            Label("新增规则", systemImage: "plus.circle.fill")
+        }
+    }
+
+    private var saveRulesButton: some View {
+        Button {
+            viewModel.saveRules()
+            showRuleEditor = false
+        } label: {
+            Label("保存并关闭", systemImage: "checkmark.circle.fill")
+        }
+        .buttonStyle(.borderedProminent)
+    }
+
+    private var ruleEditorHeaderWideLayout: some View {
+        HStack {
+            ruleEditorTitleBlock
+            Spacer(minLength: 12)
+            addRuleButton
+            saveRulesButton
+        }
+    }
+
+    private var ruleEditorHeaderCompactLayout: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ruleEditorTitleBlock
+            HStack(spacing: 12) {
+                addRuleButton
+                saveRulesButton
+            }
+        }
+    }
+
+    private func batchCardSection<Content: View>(title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            content()
+        }
+    }
+
+    private func compactFieldGroup<Content: View>(title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func fieldGroup<Content: View>(title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func conflictPolicyPicker(for id: UUID, fallback: ConflictPolicy, isEnabled: Bool) -> some View {
+        Picker("冲突策略", selection: Binding(
+            get: { itemSnapshot(for: id)?.conflictPolicy ?? fallback },
+            set: { newValue in
+                guard let index = itemIndex(for: id) else { return }
+                viewModel.items[index].conflictPolicy = newValue
+            }
+        )) {
+            ForEach(ConflictPolicy.allCases) { policy in
+                Text(policy.title).tag(policy)
+            }
+        }
+        .pickerStyle(.menu)
+        .disabled(!isEnabled)
+    }
+
+    private func statusChip(title: String, color: Color) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.12), in: Capsule())
+            .foregroundStyle(color)
+    }
+
+    private func itemIndex(for id: UUID) -> Int? {
+        viewModel.items.firstIndex { $0.id == id }
+    }
+
+    private func itemSnapshot(for id: UUID) -> BatchLinkItem? {
+        guard let index = itemIndex(for: id) else { return nil }
+        return viewModel.items[index]
+    }
+
+    private func itemTextBinding(for id: UUID, keyPath: WritableKeyPath<BatchLinkItem, String>) -> Binding<String> {
+        Binding(
+            get: { itemSnapshot(for: id)?[keyPath: keyPath] ?? "" },
+            set: { newValue in
+                guard let index = itemIndex(for: id) else { return }
+                viewModel.items[index][keyPath: keyPath] = newValue
+                viewModel.refreshTargetState(for: index)
+            }
+        )
+    }
+
+    private enum LayoutMetrics {
+        static let windowMinWidth: CGFloat = 760
+        static let windowMinHeight: CGFloat = 560
+        static let ruleEditorMinWidth: CGFloat = 560
+        static let ruleEditorMinHeight: CGFloat = 360
     }
 }
