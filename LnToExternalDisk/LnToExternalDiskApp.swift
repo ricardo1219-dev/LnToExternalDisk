@@ -10,6 +10,9 @@ import SwiftUI
 
 @main
 struct LnToExternalDiskApp: App {
+    
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -30,5 +33,13 @@ struct LnToExternalDiskApp: App {
             }
             .background(Color(nsColor: .windowBackgroundColor))
         }
+    }
+}
+
+// MARK: - App Delegate
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // 当最后一个窗口关闭时，退出应用
+        return true
     }
 }

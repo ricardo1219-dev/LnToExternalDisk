@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(xcodebuild *)",
+      "Bash(/usr/bin/grep -E \"\\(TARGET_BUILD_DIR|FULL_PRODUCT_NAME|PRODUCT_BUNDLE_IDENTIFIER|MACOSX_DEPLOYMENT_TARGET|ENABLE_APP_SANDBOX\\)\")",
+      "Bash(/usr/bin/head -n 5 \"/Users/ricardo/Desktop/IosProject/LnToExternalDisk/CLAUDE.md\")"
+    ]
+  }
+}
